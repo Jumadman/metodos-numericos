@@ -1,3 +1,5 @@
+import consola  # Configura stdout a UTF-8 al importarse
+
 import matplotlib.pyplot as plt
 
 def derivada_numerica(func, args_func, x, h=1e-5):
