@@ -1,0 +1,5 @@
+# Dependencias del proyecto - Framework de Metodos Numericos
+# Uso: pip install -r requirements.txt
+
+# Graficacion del motor de tanteo (tanteo.py)
+matplotlib>=3.9
