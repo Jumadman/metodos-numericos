@@ -24,7 +24,7 @@ def es_discontinuidad_o_asintota(f, a, b):
 def metodo_tanteo_optimizado(problema, x_inicio=-6.0, x_fin=6.5):
     f = problema.f
     print("\n" + "=" * 95)
-    print("--- MÉTODO DE TANTEO OPTIMIZADO: DETECCIÓN Y DESCARTE DE RAÍCES ---")
+    print("--- MÉTODO DE TANTEO: DETECCIÓN Y DESCARTE DE RAÍCES ---")
     print("=" * 95)
 
     try:

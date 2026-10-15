@@ -121,26 +121,25 @@ class VisualizadorInteractivoManning:
             self.ax.set_ylabel('f(x)')
             self.ax.grid(True, linestyle=':', alpha=0.6)
             self.ax.legend(loc='upper left', fontsize=8.5)
-
         else:
             p0, p1, p2 = paso['p0'], paso['p1'], paso['p2']
             p_aitken, fp_aitken = paso['p_aitken'], paso['fp_aitken']
+            k0, k1, k2, k_acel = paso['k_p0'], paso['k_p1'], paso['k_p2'], paso['k_acel']
 
-            self.ax.axvspan(min(p0, p1, p2), max(p0, p1, p2), color='magenta', alpha=0.10, label='Dominio Terna')
-            self.ax.plot(p0, 0, 'mo', markersize=8, label=f'Semilla $p_0 = {p0:.4f}$')
-            self.ax.plot(p_aitken, 0, 's', color='#2ca02c', markersize=10, markeredgecolor='black', label=f'Aitken $\\hat{{p}} = {p_aitken:.5f}$')
+            # Panel 1: Curva f(x) = 0
+            self.ax.axvspan(min(p0, p1, p2), max(p0, p1, p2), color='magenta', alpha=0.10, label='Rango de la Terna')
+            self.ax.plot(p0, 0, 'mo', markersize=8, label=f'Semilla $x_{{{k0}}} = {p0:.4f}$')
+            self.ax.plot(p_aitken, 0, 's', color='#2ca02c', markersize=10, markeredgecolor='black', label=f'Acelerado $x_{{{k_acel}}} = {p_aitken:.5f}$')
             self.ax.vlines(p_aitken, 0, fp_aitken, color='#2ca02c', linestyle='--', linewidth=1.5)
 
             err_txt = f" | Err: {paso['error']:.2e}" if paso['error'] is not None else ""
-            self.ax.set_title(f'[{modo_vista}] Steffensen - Ciclo {paso["ciclo"]}/{len(self.historial)}{err_txt}', fontsize=10, fontweight='bold')
+            self.ax.set_title(f'[{modo_vista}] Steffensen - Ciclo {paso["ciclo"]}/{len(self.historial)}: (x{k0}, x{k1}, x{k2}) -> x{k_acel}{err_txt}', fontsize=10, fontweight='bold')
             self.ax.set_xlabel('Tirante x (m)')
             self.ax.set_ylabel('f(x)')
             self.ax.grid(True, linestyle=':', alpha=0.6)
             self.ax.legend(loc='upper left', fontsize=8.5)
 
-            # =====================================================================
-            # PANEL 2: DIAGRAMA DE TELARAÑA / COBWEB (y = x vs y = g(x))
-            # =====================================================================
+            # Panel 2: Diagrama de Telaraña (Cobweb)
             ancho_terna = max(p0, p1, p2, p_aitken) - min(p0, p1, p2, p_aitken)
             m_cob = max(ancho_terna * 0.40, 0.05)
             c_min = min(p0, p1, p2, p_aitken) - m_cob
@@ -150,19 +149,17 @@ class VisualizadorInteractivoManning:
             self.ax_cobweb.plot(cx_vals, cg_vals, label='Curva $y = g(x)$', color='#d95f02', linewidth=2.0)
             self.ax_cobweb.plot([c_min, c_max], [c_min, c_max], label='Diagonal $y = x$', color='#7570b3', linestyle='--', linewidth=1.8)
 
-            # Trayectoria escalonada de la terna: (p0, p0) -> (p0, p1) -> (p1, p1) -> (p1, p2) -> (p2, p2)
             cobweb_x = [p0, p0, p1, p1, p2]
             cobweb_y = [p0, p1, p1, p2, p2]
-            self.ax_cobweb.plot(cobweb_x, cobweb_y, color='magenta', linestyle='-', linewidth=1.4, marker='o', markersize=4, label='Pasos simples $x_{k+1}=g(x_k)$')
+            self.ax_cobweb.plot(cobweb_x, cobweb_y, color='magenta', linestyle='-', linewidth=1.4, marker='o', markersize=4, label=f'Terna ($x_{{{k0}}} \\to x_{{{k1}}} \\to x_{{{k2}}}$)')
 
-            # Salto directo de Aitken sobre la diagonal y = x
-            self.ax_cobweb.plot(p_aitken, p_aitken, 's', color='#2ca02c', markersize=10, markeredgecolor='black', label=f'Salto Aitken $\\hat{{p}} = {p_aitken:.4f}$')
+            self.ax_cobweb.plot(p_aitken, p_aitken, 's', color='#2ca02c', markersize=10, markeredgecolor='black', label=f'Salto Steffensen $x_{{{k_acel}}} = {p_aitken:.4f}$')
             self.ax_cobweb.annotate('', xy=(p_aitken, p_aitken), xytext=(p2, p2),
                                     arrowprops=dict(arrowstyle="->", color='#2ca02c', lw=1.8, linestyle=':'))
 
             self.ax_cobweb.set_xlim(c_min, c_max)
             self.ax_cobweb.set_ylim(c_min, c_max)
-            self.ax_cobweb.set_title('Diagrama de Telaraña (Espacio de Fase)', fontsize=10, fontweight='bold')
+            self.ax_cobweb.set_title(f'Espacio de Fase: Terna (x{k0}, x{k1}, x{k2}) y Salto a x{k_acel}', fontsize=10, fontweight='bold')
             self.ax_cobweb.set_xlabel('x')
             self.ax_cobweb.set_ylabel('y')
             self.ax_cobweb.grid(True, linestyle=':', alpha=0.6)

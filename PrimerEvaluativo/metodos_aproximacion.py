@@ -56,43 +56,42 @@ def ejecutar_interpolacion_lineal(f, a, b, tol=0.001, max_iter=100):
     return metricas, historial
 
 
+
 def derivada_numerica(func, x, h=1e-5):
     """Calcula la derivada numérica por diferencias finitas centrales."""
     return (func(x + h) - func(x - h)) / (2.0 * h)
 
 def analizar_convergencia_punto_fijo(g, x0):
-    """
-    Verifica computacionalmente la condición suficiente de convergencia de Lipschitz:
-    |g'(x0)| < 1 en el entorno de la semilla seleccionada.
-    """
+    """Verifica computacionalmente la condición de Lipschitz |g'(x0)| < 1."""
     dg_val = derivada_numerica(g, x0)
     abs_dg = abs(dg_val)
 
-    print("\n" + "=" * 90)
+    print("\n" + "=" * 95)
     print("ANÁLISIS TEÓRICO PREVIO: CONDICIÓN DE CONVERGENCIA DE LIPSCHITZ")
-    print("=" * 90)
-    print(f"Punto de arranque seleccionado (semilla): x0 = {x0:.6f}")
-    print(f"Derivada numérica evaluada en semilla:  g'(x0) = {dg_val:+.6f}")
-    print(f"Módulo de la derivada (factor de contracción): |g'(x0)| = {abs_dg:.6f}")
+    print("=" * 95)
+    print(f"Punto inicial (semilla):               x1 = {x0:.6f}")
+    print(f"Derivada numérica evaluada en semilla: g'(x1) = {dg_val:+.6f}")
+    print(f"Factor asintótico de contracción:      |g'(x1)| = {abs_dg:.6f}")
 
     if abs_dg < 1.0:
-        tipo_conv = "Monótona (sin oscilaciones)" if dg_val > 0 else "Oscilante / Alternante (en telaraña)"
-        print(f"-> CUMPLE (|g'(x0)| < 1): El proceso iterativo es LOCALMENTE CONVERGENTE.")
-        print(f"-> Dinámica teórica del esquema simple: {tipo_conv}.")
-        print("-> Aceleración de Steffensen: Activa (extrapola cuadráticamente sobre la dinámica).")
+        tipo_conv = "Monótona" if dg_val > 0 else "Oscilante / Alternante (en telaraña)"
+        print(f"-> CUMPLE (|g'(x1)| < 1): Esquema de punto fijo LOCALMENTE CONVERGENTE.")
+        print(f"-> Dinámica del punto fijo simple: {tipo_conv}.")
+        print("-> Aceleración de Steffensen: Lista para proyectar cuadráticamente sobre la terna.")
         return True, abs_dg
     else:
-        print(f"-> ADVERTENCIA (|g'(x0)| >= 1): El punto fijo simple es DIVERGENTE en este entorno.")
+        print(f"-> ADVERTENCIA (|g'(x1)| >= 1): El punto fijo simple diverge en este entorno.")
         return False, abs_dg
-
 
 def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
     """
-    Método de Steffensen: Algoritmo de aceleración Delta^2 de Aitken con reinicio activo.
-    Genera ternas (p0, p1, p2), interpola el punto límite y reinicia la semilla.
+    Método de Steffensen: Proceso Delta^2 de Aitken aplicado por ciclos con reinicio.
+    Numeración:
+      Ciclo 1: Terna (x1, x2, x3) -> Calcula x4 (Aitken)
+      Ciclo 2: Terna (x4, x5, x6) -> Calcula x7 (Aitken)
+      Ciclo 3: Terna (x7, x8, x9) -> Calcula x10 (Aitken)
     """
-    # 1. Chequeo de convergencia previo
-    es_convergente, factor_k = analizar_convergencia_punto_fijo(g, x0)
+    analizar_convergencia_punto_fijo(g, x0)
 
     inicio = time.perf_counter()
     historial = []
@@ -100,25 +99,26 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
     print("\n" + "=" * 115)
     print("--- MÉTODO 2: MÉTODO DE STEFFENSEN (AITKEN POR CICLOS CON REINICIO) ---")
     print("=" * 115)
-    print(f"{'Ciclo':<6} | {'Puntos (k)':<12} | {'p0 (Semilla)':<14} | {'p1 = g(p0)':<14} | {'p_aitken (p̂)':<16} | {'f(p̂)':<14} | {'Error':<12}")
+    print(f"{'Ciclo':<6} | {'Terna Utilizada':<18} | {'Punto Acelerado':<16} | {'f(x_acel)':<14} | {'Error Estimado':<14} | {'Tiempo (s)':<10}")
     print("-" * 115)
 
-    p0 = float(x0)
+    semilla_ciclo = float(x0)
     p_aitken_prev = None
-    raiz_final = p0
+    raiz_final = semilla_ciclo
     error_final = None
-    contador_puntos = 0
+    k_contador = 1  # x1 es la semilla inicial
 
     for ciclo in range(1, max_ciclos + 1):
         tiempo_actual = time.perf_counter() - inicio
 
-        # Terna del ciclo
-        contador_puntos += 1
-        k1 = contador_puntos
+        # Terna del ciclo: p0 (semilla), p1 = g(p0), p2 = g(p1)
+        k_p0 = k_contador
+        p0 = semilla_ciclo
+
+        k_p1 = k_contador + 1
         p1 = g(p0)
 
-        contador_puntos += 1
-        k2 = contador_puntos
+        k_p2 = k_contador + 2
         p2 = g(p1)
 
         # Extrapolación de Aitken sobre la terna (p0, p1, p2)
@@ -128,10 +128,10 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
         else:
             p_aitken = p2
 
-        contador_puntos += 1
-        k_aitken = contador_puntos
+        k_acelerado = k_contador + 3
         fp_aitken = f(p_aitken)
 
+        # Cálculo de error entre acelerados consecutivos
         if p_aitken_prev is not None:
             error_actual = abs(p_aitken - p_aitken_prev)
             error_str = f"{error_actual:.4e}"
@@ -139,15 +139,16 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
             error_actual = abs(p_aitken - p0)
             error_str = "---"
 
-        pasos_str = f"x{k1}, x{k2} -> x{k_aitken}"
-        print(f"{ciclo:<6} | {pasos_str:<12} | {p0:<14.6f} | {p1:<14.6f} | {p_aitken:<16.6f} | {fp_aitken:<14.4e} | {error_str:<12}")
+        terna_txt = f"(x{k_p0}, x{k_p1}, x{k_p2})"
+        acel_txt = f"x{k_acelerado} = {p_aitken:.6f}"
+        print(f"{ciclo:<6} | {terna_txt:<18} | {acel_txt:<16} | {fp_aitken:<14.4e} | {error_str:<14} | {tiempo_actual:<10.6f}")
 
         historial.append({
             'ciclo': ciclo,
-            'p0': p0,
-            'p1': p1,
-            'p2': p2,
-            'fp0': f(p0),
+            'k_p0': k_p0, 'p0': p0, 'fp0': f(p0),
+            'k_p1': k_p1, 'p1': p1,
+            'k_p2': k_p2, 'p2': p2,
+            'k_acel': k_acelerado,
             'p_aitken': p_aitken,
             'fp_aitken': fp_aitken,
             'error': error_actual,
@@ -159,8 +160,11 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
             error_final = error_actual
             break
 
+        # REINICIO ACTIVO DE STEFFENSEN:
+        # El punto acelerado x_{k+3} se convierte en la semilla del nuevo ciclo
         p_aitken_prev = p_aitken
-        p0 = p_aitken
+        semilla_ciclo = p_aitken
+        k_contador = k_acelerado  # El próximo ciclo arranca en x4, x7, x10...
 
     tiempo_total = time.perf_counter() - inicio
     if error_final is None:
@@ -169,10 +173,10 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
 
     print("=" * 115)
     print(f"RESULTADOS FINALES STEFFENSEN:")
-    print(f"- Solución aproximada (p)      : {raiz_final:.6f}")
-    print(f"- Ciclos ejecutados            : {len(historial)}")
+    print(f"- Solución aproximada final    : {raiz_final:.6f}")
+    print(f"- Ciclos de Steffensen         : {len(historial)}")
     print(f"- Evaluaciones de g(x) totales : {len(historial) * 2}")
-    print(f"- Puntos totales generados     : {contador_puntos}")
+    print(f"- Puntos totales generados     : {k_contador}")
     print(f"- Error final aproximado       : {error_final:.6e}")
     print(f"- Tiempo de CPU total          : {tiempo_total:.6f} s\n")
 
@@ -182,7 +186,7 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
         'f_raiz': f(raiz_final),
         'iteraciones': len(historial),
         'evaluaciones_g': len(historial) * 2,
-        'pasos_totales': contador_puntos,
+        'pasos_totales': k_contador,
         'error': error_final,
         'tiempo': tiempo_total
     }
