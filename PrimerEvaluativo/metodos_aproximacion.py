@@ -1,4 +1,5 @@
 import time
+import math
 
 def ejecutar_interpolacion_lineal(f, a, b, tol=0.001, max_iter=100):
     """Ejecuta Regula Falsi, imprime la grilla reglamentaria y retorna métricas e historial."""
@@ -17,8 +18,17 @@ def ejecutar_interpolacion_lineal(f, a, b, tol=0.001, max_iter=100):
     error = abs(b - a)
 
     for i in range(1, max_iter + 1):
-        x = b - (fb * (b - a)) / (fb - fa)
+        denom = fb - fa
+        if abs(denom) < 1e-15 or math.isnan(denom):
+            x = (a + b) / 2.0
+        else:
+            x = b - (fb * (b - a)) / denom
+
         fx = f(x)
+        if math.isnan(fx) or math.isinf(fx):
+            x = (a + b) / 2.0
+            fx = f(x)
+
         error = abs(b - a) if i == 1 else abs(x - x_prev)
         tiempo_actual = time.perf_counter() - inicio
 
@@ -32,7 +42,7 @@ def ejecutar_interpolacion_lineal(f, a, b, tol=0.001, max_iter=100):
             'error': error, 'tiempo': tiempo_actual
         })
 
-        if error < tol and i > 1:
+        if (error < tol and i > 1) or abs(fx) < 1e-15:
             break
 
         if fa * fx < 0:
@@ -43,7 +53,7 @@ def ejecutar_interpolacion_lineal(f, a, b, tol=0.001, max_iter=100):
 
     tiempo_total = time.perf_counter() - inicio
     print("=" * 88)
-    print(f"RESULTADO INTERPOLACIÓN LINEAL -> Raíz x = {x:.6f} m | Iteraciones: {len(historial)} | Error: {error:.6e} | Tiempo: {tiempo_total:.6f} s")
+    print(f"RESULTADO INTERPOLACIÓN LINEAL -> Raíz x = {x:.6f} | Iteraciones: {len(historial)} | Error: {error:.6e} | Tiempo: {tiempo_total:.6f} s")
 
     metricas = {
         'metodo': 'Interpolación Lineal (Regula Falsi)',
@@ -56,10 +66,14 @@ def ejecutar_interpolacion_lineal(f, a, b, tol=0.001, max_iter=100):
     return metricas, historial
 
 
-
 def derivada_numerica(func, x, h=1e-5):
     """Calcula la derivada numérica por diferencias finitas centrales."""
-    return (func(x + h) - func(x - h)) / (2.0 * h)
+    f_mas = func(x + h)
+    f_menos = func(x - h)
+    if math.isnan(f_mas) or math.isnan(f_menos) or math.isinf(f_mas) or math.isinf(f_menos):
+        return 0.0
+    return (f_mas - f_menos) / (2.0 * h)
+
 
 def analizar_convergencia_punto_fijo(g, x0):
     """Verifica computacionalmente la condición de Lipschitz |g'(x0)| < 1."""
@@ -74,22 +88,19 @@ def analizar_convergencia_punto_fijo(g, x0):
     print(f"Factor asintótico de contracción:      |g'(x1)| = {abs_dg:.6f}")
 
     if abs_dg < 1.0:
-        tipo_conv = "Monótona" if dg_val > 0 else "Oscilante / Alternante (en telaraña)"
+        tipo_conv = "Monótona" if dg_val >= 0 else "Oscilante / Alternante (en telaraña)"
         print(f"-> CUMPLE (|g'(x1)| < 1): Esquema de punto fijo LOCALMENTE CONVERGENTE.")
         print(f"-> Dinámica del punto fijo simple: {tipo_conv}.")
         print("-> Aceleración de Steffensen: Lista para proyectar cuadráticamente sobre la terna.")
         return True, abs_dg
     else:
-        print(f"-> ADVERTENCIA (|g'(x1)| >= 1): El punto fijo simple diverge en este entorno.")
+        print(f"-> ADVERTENCIA (|g'(x1)| >= 1): El punto fijo simple es inestable; Steffensen intentará estabilizarlo.")
         return False, abs_dg
+
 
 def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
     """
     Método de Steffensen: Proceso Delta^2 de Aitken aplicado por ciclos con reinicio.
-    Numeración:
-      Ciclo 1: Terna (x1, x2, x3) -> Calcula x4 (Aitken)
-      Ciclo 2: Terna (x4, x5, x6) -> Calcula x7 (Aitken)
-      Ciclo 3: Terna (x7, x8, x9) -> Calcula x10 (Aitken)
     """
     analizar_convergencia_punto_fijo(g, x0)
 
@@ -99,19 +110,18 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
     print("\n" + "=" * 115)
     print("--- MÉTODO 2: MÉTODO DE STEFFENSEN (AITKEN POR CICLOS CON REINICIO) ---")
     print("=" * 115)
-    print(f"{'Ciclo':<6} | {'Terna Utilizada':<18} | {'Punto Acelerado':<16} | {'f(x_acel)':<14} | {'Error Estimado':<14} | {'Tiempo (s)':<10}")
+    print(f"{'Ciclo':<6} | {'Terna Utilizada':<18} | {'Punto Acelerado':<18} | {'f(x_acel)':<14} | {'Error Estimado':<14} | {'Tiempo (s)':<10}")
     print("-" * 115)
 
     semilla_ciclo = float(x0)
     p_aitken_prev = None
     raiz_final = semilla_ciclo
-    error_final = None
-    k_contador = 1  # x1 es la semilla inicial
+    error_final = 0.0
+    k_contador = 1
 
     for ciclo in range(1, max_ciclos + 1):
         tiempo_actual = time.perf_counter() - inicio
 
-        # Terna del ciclo: p0 (semilla), p1 = g(p0), p2 = g(p1)
         k_p0 = k_contador
         p0 = semilla_ciclo
 
@@ -123,15 +133,19 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
 
         # Extrapolación de Aitken sobre la terna (p0, p1, p2)
         denominador = p2 - 2.0 * p1 + p0
-        if abs(denominador) > 1e-14:
+        if abs(denominador) > 1e-14 and not math.isnan(denominador):
             p_aitken = p0 - ((p1 - p0) ** 2) / denominador
         else:
             p_aitken = p2
 
-        k_acelerado = k_contador + 3
+        # Protección si el salto cae temporalmente fuera del dominio de f(x)
         fp_aitken = f(p_aitken)
+        if math.isnan(fp_aitken) or math.isinf(fp_aitken):
+            p_aitken = p2
+            fp_aitken = f(p_aitken)
 
-        # Cálculo de error entre acelerados consecutivos
+        k_acelerado = k_contador + 3
+
         if p_aitken_prev is not None:
             error_actual = abs(p_aitken - p_aitken_prev)
             error_str = f"{error_actual:.4e}"
@@ -141,33 +155,35 @@ def ejecutar_steffensen(f, g, x0, tol=0.001, max_ciclos=30):
 
         terna_txt = f"(x{k_p0}, x{k_p1}, x{k_p2})"
         acel_txt = f"x{k_acelerado} = {p_aitken:.6f}"
-        print(f"{ciclo:<6} | {terna_txt:<18} | {acel_txt:<16} | {fp_aitken:<14.4e} | {error_str:<14} | {tiempo_actual:<10.6f}")
+        print(f"{ciclo:<6} | {terna_txt:<18} | {acel_txt:<18} | {fp_aitken:<14.4e} | {error_str:<14} | {tiempo_actual:<10.6f}")
+
+        fp0_val = f(p0)
+        if math.isnan(fp0_val) or math.isinf(fp0_val):
+            fp0_val = 0.0
 
         historial.append({
             'ciclo': ciclo,
-            'k_p0': k_p0, 'p0': p0, 'fp0': f(p0),
+            'k_p0': k_p0, 'p0': p0, 'fp0': fp0_val,
             'k_p1': k_p1, 'p1': p1,
             'k_p2': k_p2, 'p2': p2,
             'k_acel': k_acelerado,
             'p_aitken': p_aitken,
-            'fp_aitken': fp_aitken,
+            'fp_aitken': fp_aitken if not math.isnan(fp_aitken) else 0.0,
             'error': error_actual,
             'tiempo': tiempo_actual
         })
 
-        if p_aitken_prev is not None and error_actual < tol:
+        if (p_aitken_prev is not None and error_actual < tol) or abs(fp_aitken) < 1e-15:
             raiz_final = p_aitken
             error_final = error_actual
             break
 
-        # REINICIO ACTIVO DE STEFFENSEN:
-        # El punto acelerado x_{k+3} se convierte en la semilla del nuevo ciclo
         p_aitken_prev = p_aitken
         semilla_ciclo = p_aitken
-        k_contador = k_acelerado  # El próximo ciclo arranca en x4, x7, x10...
+        k_contador = k_acelerado
 
     tiempo_total = time.perf_counter() - inicio
-    if error_final is None:
+    if error_final == 0.0 and error_actual is not None:
         raiz_final = p_aitken
         error_final = error_actual
 

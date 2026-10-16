@@ -4,20 +4,21 @@ from matplotlib.widgets import Button
 
 class VisualizadorInteractivoManning:
     """
-    Slideshow interactivo para Interpolación Lineal y Steffensen.
-    Para Steffensen incluye vista combinada: f(x) = 0 y Diagrama de Telaraña y = g(x) vs y = x.
+    Slideshow interactivo adaptable tanto al problema de Manning como a cualquier
+    función personalizada ingresada por consola.
     """
-    def __init__(self, problema, historial, hallazgos_tanteo, modo='interpolacion', dominio_panoramico=(-6.0, 6.5)):
+    def __init__(self, problema, historial, hallazgos_tanteo, modo='interpolacion', dominio_panoramico=None):
         self.problema = problema
         self.f = problema.f
         self.g = problema.g
         self.historial = historial
         self.hallazgos = hallazgos_tanteo
         self.modo = modo
-        self.dominio_panoramico = dominio_panoramico
+        self.dominio_panoramico = dominio_panoramico or getattr(problema, 'dominio_sugerido', (-6.0, 6.5))
+        self.nombre_curva = getattr(problema, 'nombre', 'f(x)')
+        self.etiqueta_x = getattr(problema, 'etiqueta_x', 'x')
         self.index = 0
 
-        # Crear lienzo: panel simple para interpolación, panel doble para Steffensen
         if self.modo == 'interpolacion':
             self.fig, self.ax = plt.subplots(figsize=(11, 6))
             self.ax_cobweb = None
@@ -38,38 +39,65 @@ class VisualizadorInteractivoManning:
         self.dibujar_paso()
 
     def _evaluar_curva_segura(self, func, x_min, x_max, n_puntos=500):
+        """Evalúa la función de forma segura y filtra asíntotas dinámicamente a cualquier escala."""
         x_vals = np.linspace(x_min, x_max, n_puntos)
-        y_vals = []
+        raw_y = []
         for v in x_vals:
-            val = func(v)
-            if abs(val) > 200.0 or np.isinf(val) or np.isnan(val):
-                y_vals.append(np.nan)
-            else:
-                y_vals.append(val)
-        return x_vals, y_vals
+            try:
+                val = float(func(v))
+                if np.isinf(val) or np.isnan(val):
+                    raw_y.append(np.nan)
+                else:
+                    raw_y.append(val)
+            except Exception:
+                raw_y.append(np.nan)
+
+        arr_y = np.array(raw_y, dtype=float)
+        finitos = arr_y[np.isfinite(arr_y)]
+
+        # Recorte inteligente de picos asintóticos basado en percentiles
+        if len(finitos) > 10:
+            p5, p95 = np.percentile(finitos, [5, 95])
+            rango_iqr = max(p95 - p5, 1.0)
+            limite_sup = p95 + 4.0 * rango_iqr
+            limite_inf = p5 - 4.0 * rango_iqr
+            arr_y[(arr_y > limite_sup) | (arr_y < limite_inf)] = np.nan
+
+        return x_vals, arr_y.tolist()
 
     def dibujar_paso(self):
         self.ax.clear()
         if self.ax_cobweb is not None:
             self.ax_cobweb.clear()
 
+        if not self.historial:
+            return
+
         paso = self.historial[self.index]
 
         # =====================================================================
-        # PANEL 1: ECUACIÓN DEL CANAL f(x) = 0
+        # PANEL 1: CURVA DE LA FUNCIÓN f(x) = 0
         # =====================================================================
         if self.index == 0:
             x_min, x_max = self.dominio_panoramico
             x_vals, y_vals = self._evaluar_curva_segura(self.f, x_min, x_max, 1000)
             y_validos = [y for y in y_vals if not np.isnan(y)]
+            if not y_validos:
+                y_validos = [-10.0, 10.0]
 
             self.ax.set_xlim(x_min, x_max)
-            rango_y = max(y_validos) - min(y_validos)
+            rango_y = max(max(y_validos) - min(y_validos), 1e-3)
             margen_y = rango_y * 0.10
             self.ax.set_ylim(min(y_validos) - margen_y, max(y_validos) + margen_y)
 
-            self.ax.axvspan(x_min, 0, color='gray', alpha=0.12, label='Zona Descartada (x < 0)')
-            self.ax.axvspan(0, self.problema.H_max, color='green', alpha=0.12, label=f'Rango Físico (0 a {self.problema.H_max}m)')
+            # Sombreado de restricciones si el problema las tiene
+            if getattr(self.problema, 'tiene_restriccion_fisica', False):
+                v_min = getattr(self.problema, 'val_min', 0.0)
+                v_max = getattr(self.problema, 'H_max', None)
+                if v_min is not None and v_min > x_min:
+                    self.ax.axvspan(x_min, v_min, color='gray', alpha=0.12, label=f'Zona Descartada (x < {v_min})')
+                if v_min is not None and v_max is not None:
+                    self.ax.axvspan(v_min, v_max, color='green', alpha=0.12, label=f'Dominio Admisible ({v_min} a {v_max})')
 
             for a_t, b_t, valido, motivo in self.hallazgos:
                 if not valido:
@@ -92,7 +120,10 @@ class VisualizadorInteractivoManning:
             zoom_x_min, zoom_x_max = min_x - margen_x, max_x + margen_x
 
             x_vals, y_vals = self._evaluar_curva_segura(self.f, zoom_x_min, zoom_x_max, 500)
-            y_validos = [y for y in y_vals if not np.isnan(y)] + puntos_y_extra
+            y_extra_limpios = [y for y in puntos_y_extra if y is not None and not np.isnan(y) and not np.isinf(y)]
+            y_validos = [y for y in y_vals if not np.isnan(y)] + y_extra_limpios
+            if not y_validos:
+                y_validos = [-1.0, 1.0]
 
             min_y, max_y = min(y_validos), max(y_validos)
             margen_y = max((max_y - min_y) * 0.20, 0.05)
@@ -101,7 +132,7 @@ class VisualizadorInteractivoManning:
             self.ax.set_ylim(min_y - margen_y, max_y + margen_y)
             modo_vista = "ZOOM DE CONVERGENCIA"
 
-        self.ax.plot(x_vals, y_vals, label=r'Manning $f(x)$', color='#1f77b4', linewidth=2.2)
+        self.ax.plot(x_vals, y_vals, label=self.nombre_curva, color='#1f77b4', linewidth=2.2)
         self.ax.axhline(0, color='black', linestyle='-', linewidth=1.1, alpha=0.9)
         self.ax.axvline(0, color='black', linestyle=':', linewidth=0.9)
 
@@ -117,7 +148,7 @@ class VisualizadorInteractivoManning:
             self.ax.vlines(x_k, 0, fx_k, color='green', linestyle=':', linewidth=1.5)
 
             self.ax.set_title(f'[{modo_vista}] Regula Falsi - Paso {paso["iter"]}/{len(self.historial)} | Err: {paso["error"]:.2e}', fontsize=10, fontweight='bold')
-            self.ax.set_xlabel('Tirante x (m)')
+            self.ax.set_xlabel(self.etiqueta_x)
             self.ax.set_ylabel('f(x)')
             self.ax.grid(True, linestyle=':', alpha=0.6)
             self.ax.legend(loc='upper left', fontsize=8.5)
@@ -126,7 +157,6 @@ class VisualizadorInteractivoManning:
             p_aitken, fp_aitken = paso['p_aitken'], paso['fp_aitken']
             k0, k1, k2, k_acel = paso['k_p0'], paso['k_p1'], paso['k_p2'], paso['k_acel']
 
-            # Panel 1: Curva f(x) = 0
             self.ax.axvspan(min(p0, p1, p2), max(p0, p1, p2), color='magenta', alpha=0.10, label='Rango de la Terna')
             self.ax.plot(p0, 0, 'mo', markersize=8, label=f'Semilla $x_{{{k0}}} = {p0:.4f}$')
             self.ax.plot(p_aitken, 0, 's', color='#2ca02c', markersize=10, markeredgecolor='black', label=f'Acelerado $x_{{{k_acel}}} = {p_aitken:.5f}$')
@@ -134,12 +164,14 @@ class VisualizadorInteractivoManning:
 
             err_txt = f" | Err: {paso['error']:.2e}" if paso['error'] is not None else ""
             self.ax.set_title(f'[{modo_vista}] Steffensen - Ciclo {paso["ciclo"]}/{len(self.historial)}: (x{k0}, x{k1}, x{k2}) -> x{k_acel}{err_txt}', fontsize=10, fontweight='bold')
-            self.ax.set_xlabel('Tirante x (m)')
+            self.ax.set_xlabel(self.etiqueta_x)
             self.ax.set_ylabel('f(x)')
             self.ax.grid(True, linestyle=':', alpha=0.6)
             self.ax.legend(loc='upper left', fontsize=8.5)
 
-            # Panel 2: Diagrama de Telaraña (Cobweb)
+            # =====================================================================
+            # PANEL 2: DIAGRAMA DE TELARAÑA (COBWEB)
+            # =====================================================================
             ancho_terna = max(p0, p1, p2, p_aitken) - min(p0, p1, p2, p_aitken)
             m_cob = max(ancho_terna * 0.40, 0.05)
             c_min = min(p0, p1, p2, p_aitken) - m_cob
