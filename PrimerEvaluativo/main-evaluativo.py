@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from modelo_manning import ProblemaManning, ProblemaPersonalizado
+from controlador_funciones import ProblemaManning, ProblemaPersonalizado
 from Tanteo import metodo_tanteo_optimizado
 from metodos_aproximacion import ejecutar_interpolacion_lineal, ejecutar_steffensen
 from visualizador import VisualizadorInteractivoManning
