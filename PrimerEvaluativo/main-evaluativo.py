@@ -136,7 +136,7 @@ def ejecutar_flujo_modo_libre():
             if 0 <= idx_sel < len(resultados_graficos):
                 _, hist_sel, modo_sel = resultados_graficos[idx_sel]
                 if hist_sel:
-                    lanzar_visualizador(problema, hist_sel, hallazgos_tanteo, modo=modo_sel)
+                    mostrar_visualizador(problema, hist_sel, hallazgos_tanteo, modo=modo_sel)
         except ValueError:
             print("Opción no válida.")
 
